@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2009-2018 ZeroC, Inc. All rights reserved. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <ItemGroup Condition="'$(SetLinkMetadataAutomatically)' != 'false'">
+        <SliceCompile Update="@(SliceCompile)">
+            <LinkBase Condition="'%(LinkBase)' != ''">$([MSBuild]::EnsureTrailingSlash(%(LinkBase)))</LinkBase>
+            <Link Condition="'%(Link)' == '' And '%(DefiningProjectExtension)' != '.projitems' And !$([MSBuild]::ValueOrDefault('%(FullPath)', '').StartsWith($([MSBuild]::EnsureTrailingSlash($(MSBuildProjectDirectory)))))">%(LinkBase)%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </SliceCompile>
+    </ItemGroup>
+
+    <!-- When enable default items is true, *.ice and *.d files are included as None items we remove them here -->
+    <ItemGroup Condition="'$(EnableDefaultItems)' == 'true'">
+        <None Remove="**\*.ice"/>
+        <None Remove="**\SliceCompile.*.d"/>
+    </ItemGroup>
+</Project>

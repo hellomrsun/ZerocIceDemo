@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2009-2018 ZeroC, Inc. All rights reserved. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <!-- IceHome set explicitly: load version properties from the config/ice.props file, if present -->
+    <ImportGroup Condition="'$(IceNugetPackageVersion)' == '' and '$(IceHome)' != ''">
+        <Import Project="$(IceHome)\config\ice.props"
+                Condition="Exists('$(IceHome)\config\ice.props')"/>
+    </ImportGroup>
+
+    <!-- Look up IceHome, in the Windows registry -->
+    <PropertyGroup Condition="'$(IceNugetPackageVersion)' == '' and '$(IceHome)' == '' and '$(OS)' == 'Windows_NT'">
+        <IceHome>$(Registry:HKEY_CURRENT_USER\Software\ZeroC\IceBuilder@IceHome)</IceHome>
+        <IceVersion>$(Registry:HKEY_CURRENT_USER\Software\ZeroC\IceBuilder@IceVersion)</IceVersion>
+        <IceIntVersion>$(Registry:HKEY_CURRENT_USER\Software\ZeroC\IceBuilder@IceIntVersion)</IceIntVersion>
+        <IceVersionMM>$(Registry:HKEY_CURRENT_USER\Software\ZeroC\IceBuilder@IceVersionMM)</IceVersionMM>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <EnableDefaultSliceCompileItems Condition="'$(EnableDefaultSliceCompileItems)' == ''">true</EnableDefaultSliceCompileItems>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(EnableDefaultItems)' == 'true'">
+        <SliceCompile Condition="'$(EnableDefaultSliceCompileItems)' == 'true'" Include="**\*.ice"
+                      Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);@(SliceCompile)"/>
+    </ItemGroup>
+
+    <!-- Ice MSBuild properties not provided by Ice versions older than 3.7.0, IceIntVersion was not correctly set with
+         3.6.0 and we need to alos check '$(IceVersion) == '3.6.0' -->
+    <PropertyGroup Condition="'$(IceIntVersion)' != '' and ('$(IceIntVersion)' &lt; '30700' or '$(IceVersion)' == '3.6.0')">
+        <!-- Slice tasks use IceToolsPath to locate the Slice compilers -->
+        <IceToolsPath Condition="'$(IceToolsPath)' == '' and Exists('$(IceHome)\bin')">$(IceHome)\bin</IceToolsPath>
+        <!-- IceToolsBin is no longer used as of Ice 3.7, but IceBuilder sets it for projects that use Ice 3.6 -->
+        <IceToolsBin Condition="'$(IceToolsBin)' == ''">$(IceToolsPath)</IceToolsBin>
+    </PropertyGroup>
+</Project>

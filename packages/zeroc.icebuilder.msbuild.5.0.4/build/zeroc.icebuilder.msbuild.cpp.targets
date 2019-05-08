@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2009-2018 ZeroC, Inc. All rights reserved. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+    <!-- Import our custom MSbuild tasks used to build Ice for C++ projects -->
+    <UsingTask TaskName="IceBuilder.MSBuild.Slice2CppTask"
+               AssemblyFile="$(MSBuildThisFileDirectory)..\tools\net45\zeroc.icebuilder.msbuild.dll"/>
+
+    <UsingTask TaskName="IceBuilder.MSBuild.Slice2CppDependTask"
+               AssemblyFile="$(MSBuildThisFileDirectory)..\tools\net45\zeroc.icebuilder.msbuild.dll"/>
+
+    <!-- Import common settings -->
+    <Import Project="$(MSBuildThisFileDirectory)\zeroc.icebuilder.msbuild.common.props"/>
+
+    <!-- Import Ice.cpp.props file provided by Ice 3.6 binary distribution -->
+    <Import Project="$(IceHome)\config\Ice.Cpp.props"
+            Condition="'$(IceNugetPackageVersion)' == '' and Exists('$(IceHome)\config\Ice.Cpp.props')"/>
+
+    <!-- With Ice 3.6.0 the C++ props were not part of the Ice distribution. They are included with
+         Ice Builder for MSBuild for backwards compatibility -->
+    <Import Project="$(MSBuildThisFileDirectory)\Ice.3.6.0.Cpp.props"
+            Condition="'$(IceVersion)' == '3.6.0' and Exists('$(MSBuildThisFileDirectory)\Ice.3.6.0.Cpp.props')"/>
+
+    <!-- With Ice 3.6 the LocalDebuggerEviroment settings are not set in the targets file we add IceBin
+         to the PATH here -->
+    <PropertyGroup Condition="'$(IceIntVersion)' != '' and ('$(IceIntVersion)' &lt; '30700' or '$(IceVersion)' == '3.6.0')">
+        <LocalDebuggerEnvironment>PATH=$(IceBin)</LocalDebuggerEnvironment>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PropertyPageSchema Include="$(MSBuildThisFileDirectory)ProjectItemsSchema.xaml" />
+        <PropertyPageSchema Include="$(MSBuildThisFileDirectory)SliceCompile.Cpp.xaml">
+            <Context>Project</Context>
+        </PropertyPageSchema>
+        <PropertyPageSchema Include="$(MSBuildThisFileDirectory)SliceCompile.Cpp.File.xaml">
+            <Context>File</Context>
+        </PropertyPageSchema>
+        <AvailableItemName Include="SliceCompile"/>
+    </ItemGroup>
+
+    <ItemDefinitionGroup Condition="'$(IceCppMapping)' == 'cpp11' and '$(IceIntVersion)' != '' and '$(IceIntVersion)' &gt;= '30700' and '$(VisualStudioVersion)' &gt;= '14.0'">
+        <ClCompile>
+            <PreprocessorDefinitions>ICE_CPP11_MAPPING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        </ClCompile>
+    </ItemDefinitionGroup>
+
+    <Target Name="SliceCompile" BeforeTargets="CLCompile"
+            Condition="@(SliceCompile) != ''">
+
+        <Error Text="Ice Installation invalid or not detected. Invalid IceHome setting `$(IceHome)'"
+               Condition="!Exists('$(IceHome)')" />
+
+        <Error Text="Ice Installation invalid or not detected. Invalid IceToolsPath setting `$(IceToolsPath)'"
+               Condition="!Exists('$(IceToolsPath)')" />
+
+        <Error Text="The Ice Builder requires Ice Version 3.6 or later but $(IceHome) version is $(IceVersion.Replace('.51', 'b'))"
+               Condition="'$(IceVersion)' == '' Or '$(IceIntVersion)' == '' Or '$(IceIntVersion)' &lt; '30600' Or '$(IceIntVersion)' == '30651'" />
+
+        <Warning Text="The C++11 mapping is only available for Ice 3.7 with Visual Studio 2015 or later"
+                 Condition="'$(IceCppMapping)' == 'cpp11' and ('$(IceIntVersion)' &lt; '30700' or '$(VisualStudioVersion)' &lt; '14.0')"/>
+        <!--
+            Create the output directories
+        -->
+        <MakeDir Directories="%(SliceCompile.OutputDir)" Condition="!Exists('%(SliceCompile.OutputDir)')"/>
+        <MakeDir Directories="%(SliceCompile.HeaderOutputDir)" Condition="!Exists('%(SliceCompile.HeaderOutputDir)')"/>
+
+        <!-- First we check dependencies to compute which Slice files need to be recompiled -->
+        <Slice2CppDependTask
+            IceHome                           = "$(IceHome)"
+            IceToolsPath                      = "$(IceToolsPath)"
+            WorkingDirectory                  = "$(MSBuildProjectDirectory)"
+            Sources                           = "@(SliceCompile)">
+
+            <Output
+                ItemName                      = "_SliceCompile"
+                TaskParameter                 = "ComputedSources"/>
+
+        </Slice2CppDependTask>
+
+        <!-- Compile the Slice files -->
+        <Slice2CppTask
+            IceHome                           = "$(IceHome)"
+            IceToolsPath                      = "$(IceToolsPath)"
+            WorkingDirectory                  = "$(MSBuildProjectDirectory)"
+            OutputDir                         = "%(_SliceCompile.OutputDir)"
+            HeaderOutputDir                   = "%(_SliceCompile.HeaderOutputDir)"
+            IncludeDirectories                = "%(_SliceCompile.IncludeDirectories)"
+            AdditionalOptions                 = "%(_SliceCompile.AdditionalOptions)"
+            BaseDirectoryForGeneratedInclude  = "%(_SliceCompile.BaseDirectoryForGeneratedInclude)"
+            HeaderExt                         = "%(_SliceCompile.HeaderExt)"
+            SourceExt                         = "%(_SliceCompile.SourceExt)"
+            Sources                           = "@(_SliceCompile)"
+            Condition                         = "'%(_SliceCompile.BuildRequired)' == 'True'">
+            <Output
+                ItemName                      = "_SliceCompileTLogItem"
+                TaskParameter                 = "ComputedSources"/>
+        </Slice2CppTask>
+
+        <!--
+            Include all C++ generated source items that have not been manually included. We want to delay this until we are
+            running the SliceCompile target so that the Visual Studio extension has a chance to add the items to the project in
+            a persistent way. If the extension is not enabled or we are building from the command line we just add the
+            missing items in a transient way.
+        -->
+        <ItemGroup>
+            <ClCompile Include="@(_SliceCompile->'%(OutputDir)\%(Filename).%(SourceExt)')"
+                       Exclude="@(ClCompile->'%(FullPath)');@(ClCompile->'%(Identity)')" />
+        </ItemGroup>
+
+        <!--
+            TLog files are used by Visual Studio's up to date check to figure out if a project file
+            needs to be rebuilt.
+        -->
+        <!-- Write TLog files -->
+        <MakeDir Directories="$(TLogLocation)" Condition="!Exists('$(TLogLocation)')"/>
+
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.write.1u.tlog"
+                          Encoding            = "Unicode"
+                          Overwrite           = "true"
+                          Lines               = ""/>
+
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.write.1u.tlog"
+                          Encoding            = "Unicode"
+                          Lines               = "^%(_SliceCompile.FullPath);%(_SliceCompile.Outputs)"
+                          Condition           = "'%(_SliceCompile.Outputs)' != ''"/>
+
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.write.1u.tlog"
+                          Encoding            = "Unicode"
+                          Lines               = "^%(_SliceCompileTLogItem.FullPath);%(_SliceCompileTLogItem.Outputs)"
+                          Condition           = "'%(_SliceCompileTLogItem.Outputs)' != ''"/>
+
+        <!-- Read TLog files -->
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.read.1u.tlog"
+                          Encoding            = "Unicode"
+                          Overwrite           = "true"
+                          Lines               = ""/>
+
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.read.1u.tlog"
+                          Encoding            = "Unicode"
+                          Lines               = "^%(_SliceCompile.FullPath);%(_SliceCompile.Inputs)"
+                          Condition           = "'%(_SliceCompile.Inputs)' != ''"/>
+
+        <WriteLinesToFile File                = "$(TLogLocation)\slice2cpp.read.1u.tlog"
+                          Encoding            = "Unicode"
+                          Lines               = "^%(_SliceCompileTLogItem.FullPath);%(_SliceCompileTLogItem.Inputs)"
+                          Condition           = "'%(_SliceCompileTLogItem.Inputs)' != ''"/>
+    </Target>
+
+    <Target Name="SliceCompileClean" BeforeTargets="Clean">
+        <Delete Files="@(SliceCompile->'%(OutputDir)\%(Filename).%(SourceExt)')"/>
+        <Delete Files="@(SliceCompile->'%(OutputDir)\%(Filename).%(HeaderExt)')"/>
+        <Delete Files="@(SliceCompile->'%(OutputDir)\SliceCompile.%(Filename).d')"/>
+    </Target>
+</Project>

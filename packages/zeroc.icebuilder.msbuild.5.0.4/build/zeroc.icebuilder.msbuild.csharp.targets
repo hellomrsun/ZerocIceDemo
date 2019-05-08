@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2009-2018 ZeroC, Inc. All rights reserved. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <Choose>
+        <When Condition="'$(MSBuildAssemblyVersion)' == '' or '$(MSBuildAssemblyVersion)' &lt; '15.0'">
+            <PropertyGroup>
+                <SliceCompileAssemblyDir>net45</SliceCompileAssemblyDir>
+            </PropertyGroup>
+        </When>
+        <Otherwise>
+            <PropertyGroup>
+                <SliceCompileAssemblyDir>netstandard2.0</SliceCompileAssemblyDir>
+            </PropertyGroup>
+        </Otherwise>
+    </Choose>
+
+    <!-- Import our custom MSbuild tasks used to build Ice for CSharp projects -->
+    <UsingTask TaskName="IceBuilder.MSBuild.Slice2CSharpTask"
+               AssemblyFile="$(MSBuildThisFileDirectory)..\tools\$(SliceCompileAssemblyDir)\zeroc.icebuilder.msbuild.dll"/>
+
+    <UsingTask TaskName="IceBuilder.MSBuild.Slice2CSharpDependTask"
+               AssemblyFile="$(MSBuildThisFileDirectory)..\tools\$(SliceCompileAssemblyDir)\zeroc.icebuilder.msbuild.dll"/>
+
+    <!-- Import IceBuilder common settings -->
+    <Import Project="$(MSBuildThisFileDirectory)\zeroc.icebuilder.msbuild.common.props"/>
+
+    <ItemGroup>
+        <PropertyPageSchema Include="$(MSBuildThisFileDirectory)ProjectItemsSchema.xaml" />
+        <PropertyPageSchema Include="$(MSBuildThisFileDirectory)SliceCompile.CSharp.xaml">
+            <Context>BrowseObject;File</Context>
+        </PropertyPageSchema>
+        <AvailableItemName Include="SliceCompile"/>
+    </ItemGroup>
+
+    <!-- This capability is used to apply the Slice property page designer -->
+    <ItemGroup>
+        <ProjectCapability Include="SliceCompile" />
+    </ItemGroup>
+
+    <!--
+        Settings that are only supported with MSBuild 15.0 and up. The item Update
+        attribute is not supported with older MSBuild versions.
+    -->
+    <Import Project="$(MSBuildThisFileDirectory)\zeroc.icebuilder.msbuild.csharp.15.0.targets"
+            Condition="'$(MSBuildAssemblyVersion)' != '' and '$(MSBuildAssemblyVersion)' &gt; '14.0'"/>
+
+    <Target Name="SliceCompile" BeforeTargets="BeforeBuild"
+            Condition="@(SliceCompile) != ''">
+
+        <Error Text="Ice Installation invalid or not detected. Invalid IceHome setting `$(IceHome)'"
+               Condition="!Exists('$(IceHome)')" />
+
+        <Error Text="Ice Installation invalid or not detected. Invalid IceToolsPath setting `$(IceToolsPath)'"
+               Condition="!Exists('$(IceToolsPath)')" />
+
+        <Error Text="The Ice Builder requires Ice Version 3.6 or later but $(IceHome) version is $(IceVersion.Replace('.51', 'b'))"
+               Condition="'$(IceVersion)' == '' Or '$(IceIntVersion)' == '' Or '$(IceIntVersion)' &lt; '30600' Or '$(IceIntVersion)' == '30651'" />
+
+        <MakeDir Directories="%(SliceCompile.OutputDir)"/>
+
+        <!-- First we check dependencies and compute which Slice files need to be recompiled -->
+        <Slice2CSharpDependTask
+            WorkingDirectory      = "$(MSBuildProjectDirectory)"
+            IceHome               = "$(IceHome)"
+            IceToolsPath          = "$(IceToolsPath)"
+            Sources               = "@(SliceCompile)">
+
+            <Output
+                ItemName          = "_SliceCompile"
+                TaskParameter     = "ComputedSources"/>
+
+        </Slice2CSharpDependTask>
+
+        <!-- Compile the Slice files -->
+        <Slice2CSharpTask
+            WorkingDirectory      = "$(MSBuildProjectDirectory)"
+            IceHome               = "$(IceHome)"
+            IceToolsPath          = "$(IceToolsPath)"
+            OutputDir             = "%(_SliceCompile.OutputDir)"
+            IncludeDirectories    = "%(_SliceCompile.IncludeDirectories)"
+            AdditionalOptions     = "%(_SliceCompile.AdditionalOptions)"
+            Sources               = "@(_SliceCompile)"
+            Condition             = "'%(_SliceCompile.BuildRequired)' == 'True'"/>
+
+        <!--
+            Include all C# generated source items that have not been manually included. We want to delay this until we are
+            running the SliceCompile target so that the Visual Studio extension has a chance to add these items to the project in
+            a persistent way. If the extension is not enabled or we are building from the command line we just add the
+            missing items in a transient way.
+        -->
+        <ItemGroup>
+            <Compile Include="@(_SliceCompile->'%(OutputDir)\%(Filename).cs')"
+                     Exclude="@(Compile->'%(FullPath)');@(Compile->'%(Identity)')" />
+        </ItemGroup>
+    </Target>
+
+    <Target Name="SliceCompileClean" BeforeTargets="Clean">
+        <Delete Files="@(SliceCompile->'%(OutputDir)\%(Filename).cs')"/>
+        <Delete Files="@(SliceCompile->'%(OutputDir)\SliceCompile.%(Filename).d')"/>
+    </Target>
+</Project>
