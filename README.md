@@ -60,3 +60,6 @@ When you right-click your Java project and check its properties, you'll see "Ice
 #### 6. Generate Java classes based on .ice file
 
 If you have added a ".ice" file, and want to generate Java classes, you just need to right-click the project and select "Ice Builder", and then click "Compile", then your Java classes will be generated.
+
+Note: When you generate Java classes, you have the choice of Java mapping or Java compact mapping. Java compact mapping will be deprecated soon, so it's better to use Java mapping. Java mapping is also the default option.
+
