@@ -1,7 +1,18 @@
 # ZerocIceDemo
 
-Preparation:
-- Install IceBuilder.vsix extension for Visual Studio 2015. (IceBuilder is not working in VS 2017)
+## Configure Ice & Ice Builder in Visual Studio
+
+#### 1. Install Ice Builder
+
+Install IceBuilder.vsix extension for Visual Studio 2015. 
+
+(PS: IceBuilder is not working in VS2017)
+
+In VS2015, go to "Tools" -> "Extensions and Updates", and make sure Ice builder is enabled.
+
+#### 2. Install zeroc.ice.net and zeroc.icebuilder.msbuild
+
+Right-click your C# project, and click "Manage NuGet packages...", then install "zeroc.ice.net" and "zeroc.icebuilder.msbuild" packages.
 
 
 ## Configure Ice & Ice Builder in Java
