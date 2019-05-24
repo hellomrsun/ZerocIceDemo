@@ -14,6 +14,9 @@ In VS2015, go to "Tools" -> "Extensions and Updates", and make sure Ice builder 
 
 Right-click your C# project, and click "Manage NuGet packages...", then install "zeroc.ice.net" and "zeroc.icebuilder.msbuild" packages.
 
+Once you have done above things, when you add a ".ice" file, and build your solution, Visual Studio will generate all the necessary C# classes for you to make communication based on Ice.
+
+
 
 ## Configure Ice & Ice Builder in Java
 
